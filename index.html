@@ -97,12 +97,12 @@ function build(text, funds = []) {
     if (!reason.length || !unit.length || /院\s*會/.test(unit.join(''))) continue; // 院會、放假日不列
     const notes = reason.filter((l) => l.startsWith('【')).join('');
     let ask = /僅(進行)?詢答/.test(notes);
-    // 法案、非預算審查（考察、專題報告…）各自另起一列（黃底）
-    const groups = { budget: [], law: [], todo: [] };
+    // 可能要出席的（法案、報告、考察…）另起一列（黃底）；召委選舉等其他議程不列
+    const groups = { budget: [], law: [] };
     for (let l of reason) {
       if (!l.replace(/【[^】]*】|[（(]處理[)）]|\s/g, '')) continue; // 純附註
       // 公務預算、凍結案等其他預算案不列；完全不是預算的（考察、報告、法案…）列成待確認
-      const g = BILL.test(l) ? 'law' : BUDGET.test(l) || isFund(l, funds) ? 'budget' : /預算/.test(l) ? '' : 'todo';
+      const g = BILL.test(l) ? 'law' : BUDGET.test(l) || isFund(l, funds) ? 'budget' : '';
       if (!g) continue;
       if (/[（(]僅詢答[)）]/.test(l)) { ask = true; l = l.replace(/\s*[（(]僅詢答[)）]\s*/g, ''); }
       groups[g].push(l.replace(/\s+/g, ' ').trim());
@@ -113,7 +113,7 @@ function build(text, funds = []) {
       const unitName = unit.join(''), r = room.join(''), key = g + unitName + '|' + items.join('|').replace(/[（(]處理[)）]|\s/g, '');
       const prev = meets.find((m) => m.key === key); // 同委員會、同案由 → 併成一列（跨日）
       if (prev) { prev.dates.push(date); prev.wds.push(wd); if (!prev.rooms.includes(r)) prev.rooms.push(r); continue; }
-      meets.push({ key, dates: [date], wds: [wd], unit: unitName, chair: chair.join(''), items, tag, law: g === 'law', todo: g === 'todo', rooms: [r] });
+      meets.push({ key, dates: [date], wds: [wd], unit: unitName, chair: chair.join(''), items, tag, law: g === 'law', rooms: [r] });
     }
   }
   const md = (s) => { const [m, d] = s.split('/'); return `${+m}月${d.padStart(2, '0')}日`; };
@@ -122,7 +122,7 @@ function build(text, funds = []) {
     title: `立法院各委員會審查日程及出席人員表（${ymd(dates[0])}-${ymd(dates[dates.length - 1])}）`,
     rows: meets.map((m) => ({
       date: m.dates.map(md).join('\n') + `\n(星期${m.wds.join('/')})`,
-      unit: m.unit, chair: m.chair, room: m.rooms.join('\n'), law: m.law, todo: m.todo, rep: m.law || m.todo ? '待確認' : '',
+      unit: m.unit, chair: m.chair, room: m.rooms.join('\n'), law: m.law, rep: m.law ? '待確認' : '',
       items: m.items.map((x, i) => x + (i === m.items.length - 1 ? m.tag : '')),
     })),
   };
@@ -136,7 +136,7 @@ function render({ title, rows }) {
   const head = ['日期', '主審委員會', '主持人', '審查單位/案由', '會議室', '本處代表']
     .map((h) => `<td style="${cell};text-align:center">${h}</td>`).join('');
   const body = rows.map((r) => {
-    const st = cell + (r.law || r.todo ? ';background:#ffff00' : '');
+    const st = cell + (r.law ? ';background:#ffff00' : '');
     return `<tr>${[
       [br(r.date), 'center'], [esc(r.unit), 'center'], [esc(r.chair), 'center'],
       [r.items.map((x) => `<p style="margin:0">${esc(x)}</p>`).join(''), 'justify'],
