@@ -149,17 +149,17 @@ const COLS = [ // 日期、主審委員會、主持人、審查單位/案由、�
 const HEAD = `font-size:12pt;font-weight:bold;${TNR_KAI}`;
 function render({ title, rows }) {
   const p = (lines, st, a) => lines.map((x) => `<p style="margin:0;${st};${ALIGN[a]}">${esc(x) || '&nbsp;'}</p>`).join('');
-  const td = (i, bg, html) => `<td width="${Math.round(COLS[i].w * 4 / 3)}" style="width:${COLS[i].w}pt;border:1px solid #bfbfbf;padding:0 1.4pt;vertical-align:middle${bg}">${html}</td>`;
+  const td = (i, bg, html) => `<td width="${Math.round(COLS[i].w * 4 / 3)}" style="width:${COLS[i].w}pt;border:.5pt solid #000;padding:0 1.4pt;vertical-align:middle${bg}">${html}</td>`;
   const tr = (cells) => `<tr style="height:45.05pt">${cells}</tr>`;
   const head = ['日期', '主審委員會', '主持人', '審查單位/案由', '會議室', '本處代表']
-    .map((h, i) => td(i, '', p([h], HEAD, i === 0 ? 'distribute' : 'center'))).join('');
+    .map((h, i) => td(i, '', p([h], HEAD, i === 0 || i === 5 ? 'distribute' : 'center'))).join('');
   const body = rows.map((r) => {
     const bg = r.law ? ';background:#ffff00' : '';
     return tr([r.date.split('\n'), [r.unit], [r.chair], r.items, r.room.split('\n'), [r.rep]]
       .map((lines, i) => td(i, bg, p(lines, COLS[i].st, COLS[i].a))).join(''));
   }).join('');
-  return `<p style="margin:0 0 6px;font-size:14pt;font-weight:bold;${TNR_KAI};letter-spacing:-1pt;text-align:center">${esc(title)}</p>
-<table style="width:530.5pt;border-collapse:collapse;table-layout:fixed;margin:0 auto">${tr(head)}${body}</table>`;
+  return `<p style="margin:5.75pt 0 6px;font-size:14pt;font-weight:bold;${TNR_KAI};letter-spacing:-1pt;text-align:center">${esc(title)}</p>
+<table style="width:530.5pt;border-collapse:collapse;table-layout:fixed;margin-left:-10.15pt">${tr(head)}${body}</table>`;
 }
 
 const $ = (id) => document.getElementById(id);
