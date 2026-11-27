@@ -14,8 +14,6 @@ var t=r||{};var i=t.boundary||"SheetJS";i="------="+i;var n=["MIME-Version: 1.0"
   .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
   .drop { display: block; flex: 1 1 100%; padding: 28px 16px; border: 2px dashed #999; border-radius: 8px; text-align: center; cursor: pointer; color: #444; }
   .drop.over { border-color: #2a6; background: #f0fff4; }
-  details { margin-bottom: 12px; }
-  textarea { width: 100%; max-width: 640px; height: 90px; }
   #msg { color: #b00; }
   #out { overflow-x: auto; }
   #out table { border-collapse: collapse; font-size: 14px; }
@@ -32,18 +30,6 @@ var t=r||{};var i=t.boundary||"SheetJS";i="------="+i;var n=["MIME-Version: 1.0"
   <span id="funds" class="hint">基金清單載入中…</span>
   <span id="msg"></span>
 </div>
-<details>
-  <summary>本處法案（命中就整列黃底；一行一部法律，取自 ly-dashboard 主管機關＝行政院主計總處）</summary>
-  <textarea id="laws">預算法
-決算法
-會計法
-統計法
-財政紀律法
-主計機構人員設置管理條例
-主計人員任用條例
-行政院主計總處組織法
-中央政府總預算執行條例</textarea>
-</details>
 <p class="hint">產出後表格可直接點進去改（例如填「本處代表」），下載時以畫面為準。</p>
 <div id="out"></div>
 
@@ -87,7 +73,8 @@ function docRows(text, cols = 8) {
 const BUDGET = /附屬單位預算|特種基金|預算書/;
 // 點名基金／國營事業的預算案（歲入、凍結案不算）
 const isFund = (l, funds) => /預算/.test(l) && !/歲入|凍結/.test(l) && funds.some((x) => l.includes(x));
-function build(text, laws, funds = []) {
+const BILL = /草案|擬具|函請審議/; // 所有法案，不限本處主管
+function build(text, funds = []) {
   const rows = [];
   for (const r of docRows(text).slice(1)) { // 跨頁斷開的會議：單位、召委都空 → 接回上一列
     const prev = rows[rows.length - 1];
@@ -115,7 +102,7 @@ function build(text, laws, funds = []) {
     for (let l of reason) {
       if (!l.replace(/【[^】]*】|[（(]處理[)）]|\s/g, '')) continue; // 純附註
       // 公務預算、凍結案等其他預算案不列；完全不是預算的（考察、報告、法案…）列成待確認
-      const g = laws.some((x) => l.includes(x)) ? 'law' : BUDGET.test(l) || isFund(l, funds) ? 'budget' : /預算/.test(l) ? '' : 'todo';
+      const g = BILL.test(l) ? 'law' : BUDGET.test(l) || isFund(l, funds) ? 'budget' : /預算/.test(l) ? '' : 'todo';
       if (!g) continue;
       if (/[（(]僅詢答[)）]/.test(l)) { ask = true; l = l.replace(/\s*[（(]僅詢答[)）]\s*/g, ''); }
       groups[g].push(l.replace(/\s+/g, ' ').trim());
@@ -135,7 +122,7 @@ function build(text, laws, funds = []) {
     title: `立法院各委員會審查日程及出席人員表（${ymd(dates[0])}-${ymd(dates[dates.length - 1])}）`,
     rows: meets.map((m) => ({
       date: m.dates.map(md).join('\n') + `\n(星期${m.wds.join('/')})`,
-      unit: m.unit, chair: m.chair, room: m.rooms.join('\n'), law: m.law, todo: m.todo, rep: m.todo ? '待確認' : '',
+      unit: m.unit, chair: m.chair, room: m.rooms.join('\n'), law: m.law, todo: m.todo, rep: m.law || m.todo ? '待確認' : '',
       items: m.items.map((x, i) => x + (i === m.items.length - 1 ? m.tag : '')),
     })),
   };
@@ -178,8 +165,7 @@ async function load(f) {
   $('fname').textContent = '已載入：' + f.name;
   $('msg').textContent = '';
   try {
-    const laws = $('laws').value.split('\n').map((s) => s.trim()).filter(Boolean);
-    const res = build(docText(await f.arrayBuffer()), laws, FUNDS);
+    const res = build(docText(await f.arrayBuffer()), FUNDS);
     $('out').innerHTML = render(res);
     $('out').contentEditable = 'true';
     $('dl').disabled = false;
