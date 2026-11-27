@@ -25,6 +25,7 @@ var t=r||{};var i=t.boundary||"SheetJS";i="------="+i;var n=["MIME-Version: 1.0"
   #skip { margin-top: 1.5em; font-size: 14px; } #skip summary { cursor: pointer; } #skip b { color: #b00; }
   #skip table { border-collapse: collapse; margin-top: .5em; } #skip td, #skip th { border: 1px solid #ccc; padding: 3px 6px; vertical-align: top; text-align: left; }
   #skip tr.warn { background: #fde8e8; }
+  #q { width: 26em; margin-top: .5em; padding: 3px 6px; font-size: 14px; }
   #stat { font-size: 14px; } .ok { color: #070; } .ng { color: #b00; }
 </style>
 </head>
@@ -218,8 +219,14 @@ async function load(f) {
     if (!res.rows.length) $('msg').textContent = '這週沒有符合的議程';
     const w = res.skipped.filter((x) => x.warn).length;
     $('skip').innerHTML = res.skipped.length ? `<summary>檢誤：未列入的議程 ${res.skipped.length} 項${w ? `，<b>其中 ${w} 項提到基金／財團法人，請確認</b>` : ''}</summary>
+<input id="q" type="search" placeholder="查詢未列入的議程：委員會、召委、日期、原因或案由關鍵字"> <span id="qn"></span>
 <table><tr><th>日期</th><th>委員會</th><th>召委</th><th>原因</th><th>案由</th></tr>${res.skipped.map((x, i) => `<tr data-i="${i}" data-u="${esc(x.unit)}" data-c="${esc(x.chair)}"${x.warn ? ' class="warn"' : ''}><td>${esc(x.date)}</td><td>${esc(x.unit)}</td><td>${esc(x.chair)}</td><td>${x.warn ? '⚠ ' : ''}${x.why}</td><td>${esc(x.text)}</td></tr>`).join('')}</table>` : '';
     $('skip').open = w > 0;
+    const q = $('q'); if (q) q.oninput = () => { // 不分大小寫、空白分隔的關鍵字都要命中
+      const ks = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean), rs = [...$('skip').querySelectorAll('tr[data-i]')];
+      rs.forEach((r) => { r.hidden = !ks.every((k) => r.textContent.toLowerCase().includes(k)); });
+      $('qn').textContent = ks.length ? `符合 ${rs.filter((r) => !r.hidden).length} 筆` : '';
+    };
   } catch (err) { $('msg').textContent = '讀檔失敗：' + err.message + '（只支援 Word 97-2003 .doc）'; }
 }
 // ponytail: Word 直接開 HTML 內容的 .doc；要真正的二進位 .doc/.docx 再換 docx 函式庫
