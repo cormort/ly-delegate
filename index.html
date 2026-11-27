@@ -19,6 +19,9 @@ var t=r||{};var i=t.boundary||"SheetJS";i="------="+i;var n=["MIME-Version: 1.0"
   #out table { border-collapse: collapse; font-size: 14px; }
   #out td, #out th { border: 1px solid #bfbfbf; padding: 2px 5px; vertical-align: middle; }
   .hint { color: #666; font-size: 13px; }
+  /* 預覽用：沒有標楷體時 Word 退到微軟正黑體，它的「單行間距」約 1.727 倍字高（瀏覽器預設只有 1.33）。只影響畫面，不進下載檔 */
+  .nokai #out p.single { line-height: 1.727; }
+  #out table { margin-left: 0 !important; } /* 下載檔裡表格左移 10pt 置中凸出版面；畫面上不要切到日期欄 */
 </style>
 </head>
 <body>
@@ -131,8 +134,10 @@ function build(text, funds = []) {
 
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 // 欄寬、列高、內距、字型全照國會版範本（twips ÷ 20 = pt）
-const KAI = "font-family:標楷體;mso-ascii-font-family:標楷體;mso-hansi-font-family:標楷體"; // 中英數都標楷體
-const TNR_KAI = "font-family:'Times New Roman',標楷體;mso-fareast-font-family:標楷體"; // 英數 Times、中文標楷體
+// 字型後備照範本的「標楷體;微軟正黑體」：沒裝標楷體的電腦（Word 與網頁預覽）都退到微軟正黑體，行距才一致
+const FALLBACK = "DFKai-SB,'Microsoft JhengHei',微軟正黑體";
+const KAI = `font-family:標楷體,${FALLBACK};mso-ascii-font-family:標楷體;mso-hansi-font-family:標楷體`; // 中英數都標楷體
+const TNR_KAI = `font-family:'Times New Roman',標楷體,${FALLBACK};mso-fareast-font-family:標楷體`; // 英數 Times、中文標楷體
 const EXACT = (pt) => `line-height:${pt}pt;mso-line-height-rule:exactly`;
 const ALIGN = {
   center: 'text-align:center', left: 'text-align:left', justify: 'text-align:justify',
@@ -148,7 +153,7 @@ const COLS = [ // 日期、主審委員會、主持人、審查單位/案由、�
 ];
 const HEAD = `font-size:12pt;font-weight:bold;${TNR_KAI}`;
 function render({ title, rows }) {
-  const p = (lines, st, a) => lines.map((x) => `<p style="margin:0;${st};${ALIGN[a]}">${esc(x) || '&nbsp;'}</p>`).join('');
+  const p = (lines, st, a) => lines.map((x) => `<p${/line-height/.test(st) ? '' : ' class="single"'} style="margin:0;${st};${ALIGN[a]}">${esc(x) || '&nbsp;'}</p>`).join('');
   const td = (i, bg, html) => `<td width="${Math.round(COLS[i].w * 4 / 3)}" style="width:${COLS[i].w}pt;border:.5pt solid #000;padding:0 1.4pt;vertical-align:middle${bg}">${html}</td>`;
   const tr = (cells) => `<tr style="height:45.05pt">${cells}</tr>`;
   const head = ['日期', '主審委員會', '主持人', '審查單位/案由', '會議室', '本處代表']
@@ -164,6 +169,9 @@ function render({ title, rows }) {
 }
 
 const $ = (id) => document.getElementById(id);
+// 這台電腦有沒有標楷體：比較「標」字用標楷體與用 monospace 量出的寬度
+{ const c = document.createElement('canvas').getContext('2d'), w = (f) => { c.font = `40px ${f}`; return c.measureText('標楷體ABC').width; };
+  if (w('標楷體, DFKai-SB, monospace') === w('monospace')) document.documentElement.classList.add('nokai'); }
 let name = '出席人員(國會版)';
 let FUNDS = [];
 fetch('https://cormort.github.io/excel_merge/fund-config.json').then((r) => r.json())
