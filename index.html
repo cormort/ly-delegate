@@ -158,7 +158,8 @@ function render({ title, rows }) {
     return tr([r.date.split('\n'), [r.unit], [r.chair], r.items, r.room.split('\n'), [r.rep]]
       .map((lines, i) => td(i, bg, p(lines, COLS[i].st, COLS[i].a))).join(''));
   }).join('');
-  return `<p style="margin:5.75pt 0 6px;font-size:14pt;font-weight:bold;${TNR_KAI};letter-spacing:-1pt;text-align:center">${esc(title)}</p>
+  // 範本是 Word 2003 格式：字距 -1pt 套在中文字的兩個半形上（等於 -2pt），英數仍是 -1pt
+  return `<p style="margin:5.75pt 0 6px;font-size:14pt;font-weight:bold;${TNR_KAI};letter-spacing:-1pt;text-align:center">${esc(title).replace(/[^\x00-\x7f]+/g, (m) => `<span style="letter-spacing:-2pt">${m}</span>`)}</p>
 <table style="width:530.5pt;border-collapse:collapse;table-layout:fixed;margin-left:-10.15pt">${tr(head)}${body}</table>`;
 }
 
@@ -191,7 +192,7 @@ async function load(f) {
 }
 // ponytail: Word 直接開 HTML 內容的 .doc；要真正的二進位 .doc/.docx 再換 docx 函式庫
 $('dl').onclick = () => {
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>@page Section1{size:595.3pt 841.9pt;margin:56.7pt 42.55pt 56.7pt 42.55pt;mso-header-margin:0;mso-footer-margin:0}div.Section1{page:Section1}</style></head><body><div class="Section1">${$('out').innerHTML}</div></body></html>`; // A4、上下 2cm、左右 1.5cm，照國會版範本
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><xml><w:WordDocument><w:CharacterSpacingControl>CompressPunctuation</w:CharacterSpacingControl></w:WordDocument></xml><style>@page Section1{size:595.3pt 841.9pt;margin:56.7pt 42.55pt 56.7pt 42.55pt;mso-header-margin:0;mso-footer-margin:0}div.Section1{page:Section1}</style></head><body><div class="Section1">${$('out').innerHTML}</div></body></html>`; // A4、上下 2cm、左右 1.5cm，照國會版範本
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }));
   a.download = name + '.doc'; a.click(); URL.revokeObjectURL(a.href);
