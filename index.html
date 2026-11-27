@@ -73,7 +73,7 @@ function docRows(text, cols = 8) {
 const BUDGET = /附屬單位預算|特種基金|預算書/;
 // 點名基金／國營事業的預算案（歲入、凍結案不算）
 const isFund = (l, funds) => /預算/.test(l) && !/歲入|凍結/.test(l) && funds.some((x) => l.includes(x));
-const BILL = /草案|擬具|函請審議|公聽會/; // 所有法案（含公聽會），不限本處主管
+const BILL = /草案|擬具|函請審議|公聽會|專題報告/; // 所有法案（含公聽會、專題報告），不限本處主管
 function build(text, funds = []) {
   const rows = [];
   for (const r of docRows(text).slice(1)) { // 跨頁斷開的會議：單位、召委都空 → 接回上一列
