@@ -85,19 +85,34 @@ const BUDGET = /附屬單位預算|特種基金|預算書/;
 // 點名基金／國營事業的預算案（歲入、凍結案不算）
 const isFund = (l, funds) => /預算/.test(l) && !/歲入|凍結/.test(l) && funds.some((x) => l.includes(x));
 function build(text, laws, funds = []) {
-  const rows = docRows(text).slice(1);
+  const rows = [];
+  for (const r of docRows(text).slice(1)) { // 跨頁斷開的會議：單位、召委都空 → 接回上一列
+    const prev = rows[rows.length - 1];
+    if (prev && !r[0].length && !r[3].length && !r[4].length && r[5].length) {
+      const last = prev[5].length - 1, [first, ...rest] = r[5];
+      if (last >= 0 && !/[。】]$/.test(prev[5][last])) prev[5][last] += first; else rest.unshift(first);
+      prev[5].push(...rest);
+      if (!prev[6].length) prev[6] = r[6];
+    } else rows.push(r);
+  }
   const year = +(text.match(/\((\d{3})年\)/) || [])[1] || new Date().getFullYear() - 1911;
   const meets = [], dates = [];
   let date = '', wd = '';
-  for (const [d, w, , unit, chair, reason, room] of rows) {
+  // 舊式週報把多案寫在同一段「一、…二、…」→ 拆開並去掉編號
+  const split = (l) => l.split(/(?<=^|[。\s】）)])(?=[一二三四五六七八九十]{1,3}、)/)
+    .map((x) => x.replace(/^[一二三四五六七八九十]{1,3}、\s*/, '').trim()).filter(Boolean);
+  for (const [d, w, , unit, chair, raw, room] of rows) {
+    const reason = raw.flatMap(split);
     if (d[0]) { date = d[0]; wd = w[0] || ''; dates.push(date); }
-    if (!reason.length) continue;
+    if (!reason.length || !unit.length || /院\s*會/.test(unit.join(''))) continue; // 院會、放假日不列
     const notes = reason.filter((l) => l.startsWith('【')).join('');
     let ask = /僅(進行)?詢答/.test(notes);
-    const groups = { budget: [], law: [] }; // 法案另起一列（黃底）
+    // 法案、非預算審查（考察、專題報告…）各自另起一列（黃底）
+    const groups = { budget: [], law: [], todo: [] };
     for (let l of reason) {
-      if (l.startsWith('【')) continue;
-      const g = laws.some((x) => l.includes(x)) ? 'law' : BUDGET.test(l) || isFund(l, funds) ? 'budget' : '';
+      if (!l.replace(/【[^】]*】|[（(]處理[)）]|\s/g, '')) continue; // 純附註
+      // 公務預算、凍結案等其他預算案不列；完全不是預算的（考察、報告、法案…）列成待確認
+      const g = laws.some((x) => l.includes(x)) ? 'law' : BUDGET.test(l) || isFund(l, funds) ? 'budget' : /預算/.test(l) ? '' : 'todo';
       if (!g) continue;
       if (/[（(]僅詢答[)）]/.test(l)) { ask = true; l = l.replace(/\s*[（(]僅詢答[)）]\s*/g, ''); }
       groups[g].push(l.replace(/\s+/g, ' ').trim());
@@ -108,7 +123,7 @@ function build(text, laws, funds = []) {
       const unitName = unit.join(''), r = room.join(''), key = g + unitName + '|' + items.join('|').replace(/[（(]處理[)）]|\s/g, '');
       const prev = meets.find((m) => m.key === key); // 同委員會、同案由 → 併成一列（跨日）
       if (prev) { prev.dates.push(date); prev.wds.push(wd); if (!prev.rooms.includes(r)) prev.rooms.push(r); continue; }
-      meets.push({ key, dates: [date], wds: [wd], unit: unitName, chair: chair.join(''), items, tag, law: g === 'law', rooms: [r] });
+      meets.push({ key, dates: [date], wds: [wd], unit: unitName, chair: chair.join(''), items, tag, law: g === 'law', todo: g === 'todo', rooms: [r] });
     }
   }
   const md = (s) => { const [m, d] = s.split('/'); return `${+m}月${d.padStart(2, '0')}日`; };
@@ -117,7 +132,7 @@ function build(text, laws, funds = []) {
     title: `立法院各委員會審查日程及出席人員表（${ymd(dates[0])}-${ymd(dates[dates.length - 1])}）`,
     rows: meets.map((m) => ({
       date: m.dates.map(md).join('\n') + `\n(星期${m.wds.join('/')})`,
-      unit: m.unit, chair: m.chair, room: m.rooms.join('\n'), law: m.law,
+      unit: m.unit, chair: m.chair, room: m.rooms.join('\n'), law: m.law, todo: m.todo, rep: m.todo ? '待確認' : '',
       items: m.items.map((x, i) => x + (i === m.items.length - 1 ? m.tag : '')),
     })),
   };
@@ -131,11 +146,11 @@ function render({ title, rows }) {
   const head = ['日期', '主審委員會', '主持人', '審查單位/案由', '會議室', '本處代表']
     .map((h) => `<td style="${cell};text-align:center">${h}</td>`).join('');
   const body = rows.map((r) => {
-    const st = cell + (r.law ? ';background:#ffff00' : '');
+    const st = cell + (r.law || r.todo ? ';background:#ffff00' : '');
     return `<tr>${[
       [br(r.date), 'center'], [esc(r.unit), 'center'], [esc(r.chair), 'center'],
       [r.items.map((x) => `<p style="margin:0">${esc(x)}</p>`).join(''), 'justify'],
-      [br(r.room), 'center'], ['&nbsp;', 'center'],
+      [br(r.room), 'center'], [r.rep ? esc(r.rep) : '&nbsp;', 'center'],
     ].map(([v, a]) => `<td style="${st};text-align:${a}">${v}</td>`).join('')}</tr>`;
   }).join('');
   return `<p style="text-align:center;font-size:14pt;font-family:標楷體;margin:0 0 6px">${esc(title)}</p>
