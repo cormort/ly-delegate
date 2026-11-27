@@ -132,19 +132,23 @@ function build(text, funds = []) {
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 const br = (s) => esc(s).replace(/\n/g, '<br>');
 function render({ title, rows }) {
-  const cell = 'border:1px solid #bfbfbf;padding:0 5px;vertical-align:middle;font-size:11pt;font-family:\'Times New Roman\',標楷體';
+  // 欄寬、列高、內距照國會版範本（twips ÷ 20 = pt）
+  const W = [60.45, 42.75, 58.6, 212.95, 63.8, 91.95];
+  const cell = 'border:1px solid #bfbfbf;padding:0 1.4pt;vertical-align:middle;font-size:11pt;font-family:\'Times New Roman\',標楷體';
+  const td = (i, st, a, v) => `<td width="${Math.round(W[i] * 4 / 3)}" style="width:${W[i]}pt;${st};text-align:${a}">${v}</td>`;
+  const tr = (cells) => `<tr style="height:45.05pt">${cells}</tr>`;
   const head = ['日期', '主審委員會', '主持人', '審查單位/案由', '會議室', '本處代表']
-    .map((h) => `<td style="${cell};text-align:center">${h}</td>`).join('');
+    .map((h, i) => td(i, cell, 'center', h)).join('');
   const body = rows.map((r) => {
     const st = cell + (r.law ? ';background:#ffff00' : '');
-    return `<tr>${[
+    return tr([
       [br(r.date), 'center'], [esc(r.unit), 'center'], [esc(r.chair), 'center'],
       [r.items.map((x) => `<p style="margin:0">${esc(x)}</p>`).join(''), 'justify'],
       [br(r.room), 'center'], [r.rep ? esc(r.rep) : '&nbsp;', 'center'],
-    ].map(([v, a]) => `<td style="${st};text-align:${a}">${v}</td>`).join('')}</tr>`;
+    ].map(([v, a], i) => td(i, st, a, v)).join(''));
   }).join('');
   return `<p style="text-align:center;font-size:14pt;font-family:標楷體;margin:0 0 6px">${esc(title)}</p>
-<table style="border-collapse:collapse"><tr>${head}</tr>${body}</table>`;
+<table style="width:530.5pt;border-collapse:collapse;table-layout:fixed;margin:0 auto">${tr(head)}${body}</table>`;
 }
 
 const $ = (id) => document.getElementById(id);
@@ -176,7 +180,7 @@ async function load(f) {
 }
 // ponytail: Word 直接開 HTML 內容的 .doc；要真正的二進位 .doc/.docx 再換 docx 函式庫
 $('dl').onclick = () => {
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>@page{size:21cm 29.7cm;margin:1.5cm}</style></head><body>${$('out').innerHTML}</body></html>`;
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>@page Section1{size:595.3pt 841.9pt;margin:56.7pt 42.55pt 56.7pt 42.55pt;mso-header-margin:0;mso-footer-margin:0}div.Section1{page:Section1}</style></head><body><div class="Section1">${$('out').innerHTML}</div></body></html>`; // A4、上下 2cm、左右 1.5cm，照國會版範本
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }));
   a.download = name + '.doc'; a.click(); URL.revokeObjectURL(a.href);
