@@ -12,6 +12,8 @@ var t=r||{};var i=t.boundary||"SheetJS";i="------="+i;var n=["MIME-Version: 1.0"
 <style>
   body { font-family: "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 16px; background: #fff; color: #222; }
   .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .drop { display: block; flex: 1 1 100%; padding: 28px 16px; border: 2px dashed #999; border-radius: 8px; text-align: center; cursor: pointer; color: #444; }
+  .drop.over { border-color: #2a6; background: #f0fff4; }
   details { margin-bottom: 12px; }
   textarea { width: 100%; max-width: 640px; height: 90px; }
   #msg { color: #b00; }
@@ -24,7 +26,8 @@ var t=r||{};var i=t.boundary||"SheetJS";i="------="+i;var n=["MIME-Version: 1.0"
 <body>
 <h2>週報 → 出席人員表（國會版）</h2>
 <div class="bar">
-  <input type="file" id="file" accept=".doc">
+  <label id="drop" class="drop">把週報 .doc 拖到這裡，或<u>點此選擇檔案</u><input type="file" id="file" accept=".doc" hidden></label>
+  <span id="fname"></span>
   <button id="dl" disabled>下載 .doc</button>
   <span id="funds" class="hint">基金清單載入中…</span>
   <span id="msg"></span>
@@ -163,8 +166,16 @@ let FUNDS = [];
 fetch('https://cormort.github.io/excel_merge/fund-config.json').then((r) => r.json())
   .then((c) => { FUNDS = [...new Set([...c.sortOrder, ...Object.keys(c.aliasMap || {}).filter((k) => k.length >= 3)])]; $('funds').textContent = `基金清單 ${FUNDS.length} 筆已載入`; })
   .catch(() => { $('funds').textContent = '基金清單載不到，只用關鍵字判斷'; }); // ponytail: 斷網就退回 BUDGET 關鍵字
-$('file').onchange = async (e) => {
-  const f = e.target.files[0]; if (!f) return;
+const drop = $('drop');
+['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('over')));
+drop.addEventListener('drop', (e) => { e.preventDefault(); load(e.dataTransfer.files[0]); });
+window.addEventListener('dragover', (e) => e.preventDefault()); // 拖偏了不要讓瀏覽器直接開檔
+window.addEventListener('drop', (e) => e.preventDefault());
+$('file').onchange = (e) => load(e.target.files[0]);
+async function load(f) {
+  if (!f) return;
+  $('fname').textContent = '已載入：' + f.name;
   $('msg').textContent = '';
   try {
     const laws = $('laws').value.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -176,7 +187,7 @@ $('file').onchange = async (e) => {
     if (m) name = `${m[1]}${m[2]}${m[3]}-${m[4]}${m[5]}出席人員(國會版)`;
     if (!res.rows.length) $('msg').textContent = '這週沒有符合的議程';
   } catch (err) { $('msg').textContent = '讀檔失敗：' + err.message + '（只支援 Word 97-2003 .doc）'; }
-};
+}
 // ponytail: Word 直接開 HTML 內容的 .doc；要真正的二進位 .doc/.docx 再換 docx 函式庫
 $('dl').onclick = () => {
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>@page{size:21cm 29.7cm;margin:1.5cm}</style></head><body>${$('out').innerHTML}</body></html>`;
