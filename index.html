@@ -130,24 +130,35 @@ function build(text, funds = []) {
 // ===== /core =====
 
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-const br = (s) => esc(s).replace(/\n/g, '<br>');
+// 欄寬、列高、內距、字型全照國會版範本（twips ÷ 20 = pt）
+const KAI = "font-family:標楷體;mso-ascii-font-family:標楷體;mso-hansi-font-family:標楷體"; // 中英數都標楷體
+const TNR_KAI = "font-family:'Times New Roman',標楷體;mso-fareast-font-family:標楷體"; // 英數 Times、中文標楷體
+const EXACT = (pt) => `line-height:${pt}pt;mso-line-height-rule:exactly`;
+const ALIGN = {
+  center: 'text-align:center', left: 'text-align:left', justify: 'text-align:justify',
+  distribute: 'text-align:justify;text-align-last:justify;text-justify:distribute-all-lines', // 分散對齊
+};
+const COLS = [ // 日期、主審委員會、主持人、審查單位/案由、會議室、本處代表
+  { w: 60.45, st: `font-size:12pt;${TNR_KAI};letter-spacing:-.5pt;${EXACT(16)}`, a: 'center' },
+  { w: 42.75, st: `font-size:11pt;${KAI};${EXACT(11)}`, a: 'distribute' },
+  { w: 58.6, st: `font-size:11pt;${KAI}`, a: 'left' },
+  { w: 212.95, st: `font-size:11pt;${KAI}`, a: 'justify' },
+  { w: 63.8, st: `font-size:11pt;${KAI};${EXACT(11)}`, a: 'center' },
+  { w: 91.95, st: `font-size:11pt;${KAI}`, a: 'center' },
+];
+const HEAD = `font-size:12pt;font-weight:bold;${TNR_KAI}`;
 function render({ title, rows }) {
-  // 欄寬、列高、內距照國會版範本（twips ÷ 20 = pt）
-  const W = [60.45, 42.75, 58.6, 212.95, 63.8, 91.95];
-  const cell = 'border:1px solid #bfbfbf;padding:0 1.4pt;vertical-align:middle;font-size:11pt;font-family:\'Times New Roman\',標楷體';
-  const td = (i, st, a, v) => `<td width="${Math.round(W[i] * 4 / 3)}" style="width:${W[i]}pt;${st};text-align:${a}">${v}</td>`;
+  const p = (lines, st, a) => lines.map((x) => `<p style="margin:0;${st};${ALIGN[a]}">${esc(x) || '&nbsp;'}</p>`).join('');
+  const td = (i, bg, html) => `<td width="${Math.round(COLS[i].w * 4 / 3)}" style="width:${COLS[i].w}pt;border:1px solid #bfbfbf;padding:0 1.4pt;vertical-align:middle${bg}">${html}</td>`;
   const tr = (cells) => `<tr style="height:45.05pt">${cells}</tr>`;
   const head = ['日期', '主審委員會', '主持人', '審查單位/案由', '會議室', '本處代表']
-    .map((h, i) => td(i, cell, 'center', h)).join('');
+    .map((h, i) => td(i, '', p([h], HEAD, i === 0 ? 'distribute' : 'center'))).join('');
   const body = rows.map((r) => {
-    const st = cell + (r.law ? ';background:#ffff00' : '');
-    return tr([
-      [br(r.date), 'center'], [esc(r.unit), 'center'], [esc(r.chair), 'center'],
-      [r.items.map((x) => `<p style="margin:0">${esc(x)}</p>`).join(''), 'justify'],
-      [br(r.room), 'center'], [r.rep ? esc(r.rep) : '&nbsp;', 'center'],
-    ].map(([v, a], i) => td(i, st, a, v)).join(''));
+    const bg = r.law ? ';background:#ffff00' : '';
+    return tr([r.date.split('\n'), [r.unit], [r.chair], r.items, r.room.split('\n'), [r.rep]]
+      .map((lines, i) => td(i, bg, p(lines, COLS[i].st, COLS[i].a))).join(''));
   }).join('');
-  return `<p style="text-align:center;font-size:14pt;font-family:標楷體;margin:0 0 6px">${esc(title)}</p>
+  return `<p style="margin:0 0 6px;font-size:14pt;font-weight:bold;${TNR_KAI};letter-spacing:-1pt;text-align:center">${esc(title)}</p>
 <table style="width:530.5pt;border-collapse:collapse;table-layout:fixed;margin:0 auto">${tr(head)}${body}</table>`;
 }
 
