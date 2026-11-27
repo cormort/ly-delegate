@@ -22,6 +22,10 @@ var t=r||{};var i=t.boundary||"SheetJS";i="------="+i;var n=["MIME-Version: 1.0"
   /* 預覽用：沒有標楷體時 Word 退到微軟正黑體，它的「單行間距」約 1.727 倍字高（瀏覽器預設只有 1.33）。只影響畫面，不進下載檔 */
   .nokai #out p.single { line-height: 1.727; }
   #out table { margin-left: 0 !important; } /* 下載檔裡表格左移 10pt 置中凸出版面；畫面上不要切到日期欄 */
+  #skip { margin-top: 1.5em; font-size: 14px; } #skip summary { cursor: pointer; } #skip b { color: #b00; }
+  #skip table { border-collapse: collapse; margin-top: .5em; } #skip td, #skip th { border: 1px solid #ccc; padding: 3px 6px; vertical-align: top; text-align: left; }
+  #skip tr.warn { background: #fde8e8; }
+  #stat { font-size: 14px; } .ok { color: #070; } .ng { color: #b00; }
 </style>
 </head>
 <body>
@@ -31,10 +35,13 @@ var t=r||{};var i=t.boundary||"SheetJS";i="------="+i;var n=["MIME-Version: 1.0"
   <span id="fname"></span>
   <button id="dl" disabled>下載 .doc</button>
   <span id="funds" class="hint">基金清單載入中…</span>
+  <label>檢視排序 <select id="sort" disabled><option value="i">日期</option><option value="u">委員會</option><option value="c">召委</option></select></label>
   <span id="msg"></span>
 </div>
+<p id="stat"></p>
 <p class="hint">產出後表格可直接點進去改（例如填「本處代表」），下載時以畫面為準。</p>
 <div id="out"></div>
+<details id="skip"></details>
 
 <script>
 // ===== core (Node 測試也吃這段) =====
@@ -89,7 +96,8 @@ function build(text, funds = []) {
     } else rows.push(r);
   }
   const year = +(text.match(/\((\d{3})年\)/) || [])[1] || new Date().getFullYear() - 1911;
-  const meets = [], dates = [];
+  const meets = [], dates = [], skipped = [];
+  const st = { meets: 0, items: 0, kept: 0, skipped: 0, other: 0 }; // 對帳：items = kept + skipped + other
   let date = '', wd = '';
   // 舊式週報把多案寫在同一段「一、…二、…」→ 拆開並去掉編號
   const split = (l) => l.split(/(?<=^|[。\s】）)])(?=[一二三四五六七八九十]{1,3}、)/)
@@ -97,7 +105,9 @@ function build(text, funds = []) {
   for (const [d, w, , unit, chair, raw, room] of rows) {
     const reason = raw.flatMap(split);
     if (d[0]) { date = d[0]; wd = w[0] || ''; dates.push(date); }
-    if (!reason.length || !unit.length || /院\s*會/.test(unit.join(''))) continue; // 院會、放假日不列
+    const n = reason.filter((l) => l.replace(/【[^】]*】|[（(]處理[)）]|\s/g, '')).length; // 案由項數（不含純附註）
+    if (reason.length) { st.meets++; st.items += n; }
+    if (!reason.length || !unit.length || /院\s*會/.test(unit.join(''))) { st.other += n; continue; } // 院會、放假日不列
     const notes = reason.filter((l) => l.startsWith('【')).join('');
     let ask = /僅(進行)?詢答/.test(notes);
     // 可能要出席的（法案、報告、考察…）另起一列（黃底）；召委選舉等其他議程不列
@@ -106,7 +116,14 @@ function build(text, funds = []) {
       if (!l.replace(/【[^】]*】|[（(]處理[)）]|\s/g, '')) continue; // 純附註
       // 公務預算、凍結案等其他預算案不列；完全不是預算的（考察、報告、法案…）列成待確認
       const g = BILL.test(l) ? 'law' : BUDGET.test(l) || isFund(l, funds) ? 'budget' : '';
-      if (!g) continue;
+      if (g) st.kept++; else st.skipped++;
+      if (!g) { // 不列的也記下來，給人工檢誤；點到基金／財團法人／營業的特別標出來（多半是基金清單沒收到）
+        const why = /歲入|凍結/.test(l) ? '歲入／凍結案' : /預算/.test(l) ? '公務預算' : '其他議程';
+        const text = l.replace(/\s+/g, ' ').trim(), u = unit.join(''), dup = skipped.find((x) => x.unit === u && x.text === text);
+        if (dup) { if (!dup.date.includes(date)) dup.date += '、' + date; } // 同案跨日 → 一筆
+        else skipped.push({ date, unit: u, chair: chair.join(''), text, why, warn: /基金|財團法人|營業|國營/.test(l) && !/歲入|凍結/.test(l) });
+        continue;
+      }
       if (/[（(]僅詢答[)）]/.test(l)) { ask = true; l = l.replace(/\s*[（(]僅詢答[)）]\s*/g, ''); }
       groups[g].push(l.replace(/\s+/g, ' ').trim());
     }
@@ -128,6 +145,7 @@ function build(text, funds = []) {
       unit: m.unit, chair: m.chair, room: m.rooms.join('\n'), law: m.law, rep: m.law ? '待確認' : '',
       items: m.items.map((x, i) => x + (i === m.items.length - 1 ? m.tag : '')),
     })),
+    skipped, st,
   };
 }
 // ===== /core =====
@@ -158,10 +176,10 @@ function render({ title, rows }) {
   const tr = (cells) => `<tr style="height:45.05pt">${cells}</tr>`;
   const head = ['日期', '主審委員會', '主持人', '審查單位/案由', '會議室', '本處代表']
     .map((h, i) => td(i, '', p([h], HEAD, i === 0 || i === 5 ? 'distribute' : 'center'))).join('');
-  const body = rows.map((r) => {
+  const body = rows.map((r, i) => {
     const bg = r.law ? ';background:#ffff00' : '';
     return tr([r.date.split('\n'), [r.unit], [r.chair], r.items, r.room.split('\n'), [r.rep]]
-      .map((lines, i) => td(i, bg, p(lines, COLS[i].st, COLS[i].a))).join(''));
+      .map((lines, i) => td(i, bg, p(lines, COLS[i].st, COLS[i].a))).join('')).replace('<tr ', `<tr data-i="${i}" data-u="${esc(r.unit)}" data-c="${esc(r.chair)}" `);
   }).join('');
   // 範本是 Word 2003 格式：字距 -1pt 套在中文字的兩個半形上（等於 -2pt），英數仍是 -1pt
   return `<p style="margin:5.75pt 0 6px;font-size:14pt;font-weight:bold;${TNR_KAI};letter-spacing:-1pt;text-align:center">${esc(title).replace(/[^\x00-\x7f]+/g, (m) => `<span style="letter-spacing:-2pt">${m}</span>`)}</p>
@@ -192,18 +210,35 @@ async function load(f) {
     const res = build(docText(await f.arrayBuffer()), FUNDS);
     $('out').innerHTML = render(res);
     $('out').contentEditable = 'true';
-    $('dl').disabled = false;
+    $('dl').disabled = $('sort').disabled = false; $('sort').value = 'i';
+    const t = res.st, ok = t.items === t.kept + t.skipped + t.other;
+    $('stat').innerHTML = `對帳：週報 ${t.meets} 場會議、${t.items} 項案由 ＝ 列入 ${t.kept} 項（併成 ${res.rows.length} 列，黃底 ${res.rows.filter((r) => r.law).length} 列）＋ 未列 ${t.skipped} 項（同案跨日合併後 ${res.skipped.length} 筆，見下方檢誤）＋ 院會／放假 ${t.other} 項 ` + (ok ? '<b class="ok">✓ 相符</b>' : '<b class="ng">✗ 不相符，請回報</b>');
     const m = res.title.match(/（(\d+)\/(\d+)\/(\d+)-\d+\/(\d+)\/(\d+)）/);
     if (m) name = `${m[1]}${m[2]}${m[3]}-${m[4]}${m[5]}出席人員(國會版)`;
     if (!res.rows.length) $('msg').textContent = '這週沒有符合的議程';
+    const w = res.skipped.filter((x) => x.warn).length;
+    $('skip').innerHTML = res.skipped.length ? `<summary>檢誤：未列入的議程 ${res.skipped.length} 項${w ? `，<b>其中 ${w} 項提到基金／財團法人，請確認</b>` : ''}</summary>
+<table><tr><th>日期</th><th>委員會</th><th>召委</th><th>原因</th><th>案由</th></tr>${res.skipped.map((x, i) => `<tr data-i="${i}" data-u="${esc(x.unit)}" data-c="${esc(x.chair)}"${x.warn ? ' class="warn"' : ''}><td>${esc(x.date)}</td><td>${esc(x.unit)}</td><td>${esc(x.chair)}</td><td>${x.warn ? '⚠ ' : ''}${x.why}</td><td>${esc(x.text)}</td></tr>`).join('')}</table>` : '';
+    $('skip').open = w > 0;
   } catch (err) { $('msg').textContent = '讀檔失敗：' + err.message + '（只支援 Word 97-2003 .doc）'; }
 }
 // ponytail: Word 直接開 HTML 內容的 .doc；要真正的二進位 .doc/.docx 再換 docx 函式庫
+// 檢視排序只改畫面上的列順序（保留手動修改）；下載一律照日期
+const UNITS = ['內政', '外交及國防', '經濟', '財政', '教育及文化', '交通', '司法及法制', '社福及衛環'];
+const order = (k) => ['out', 'skip'].forEach((id) => { // 出席表和未列入清單一起排
+  const first = $(id).querySelector('tr[data-i]'); if (!first) return;
+  const tb = first.parentNode, rows = [...tb.querySelectorAll('tr[data-i]')];
+  const v = (r) => k === 'u' ? UNITS.indexOf(r.dataset.u) >>> 0 : k === 'c' ? r.dataset.c : 0;
+  rows.sort((a, b) => (k === 'c' ? v(a).localeCompare(v(b), 'zh-TW-u-co-stroke') : v(a) - v(b)) || a.dataset.i - b.dataset.i).forEach((r) => tb.append(r));
+});
+$('sort').onchange = (e) => order(e.target.value);
 $('dl').onclick = () => {
+  const k = $('sort').value; order('i');
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><xml><w:WordDocument><w:CharacterSpacingControl>CompressPunctuation</w:CharacterSpacingControl></w:WordDocument></xml><style>@page Section1{size:595.3pt 841.9pt;margin:56.7pt 42.55pt 56.7pt 42.55pt;mso-header-margin:0;mso-footer-margin:0}div.Section1{page:Section1}</style></head><body><div class="Section1">${$('out').innerHTML}</div></body></html>`; // A4、上下 2cm、左右 1.5cm，照國會版範本
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }));
   a.download = name + '.doc'; a.click(); URL.revokeObjectURL(a.href);
+  order(k);
 };
 </script>
 </body>
