@@ -81,10 +81,10 @@ function docRows(text, cols = 8) {
   return rows;
 }
 
-const BUDGET = /附屬單位預算|特種基金|預算書/;
+const BUDGET = /附屬單位預算|特種基金|預算書|(財團|行政)法人[^。]*預算/; // 財團法人也有寫成「工作計畫及收支預算案」的；行政法人預算也列
 // 點名基金／國營事業的預算案（歲入、凍結案不算）
-const isFund = (l, funds) => /預算/.test(l) && !/歲入|凍結/.test(l) && funds.some((x) => l.includes(x));
-const BILL = /草案|擬具|函請審議|公聽會|專題報告|業務報告|報告業務|^邀請|考察/; // 可能要出席的：法案、公聽會、專題報告、業務報告（含「邀請…報告」）、考察（不限本處主管，由人工判斷）
+const isFund = (l, funds) => /預算/.test(l) && !/歲入|凍結/.test(l.replace(/【[^】]*】?/g, '')) && funds.some((x) => l.includes(x));
+const BILL = /草案|擬具|函請審議|公聽會|專題報告|業務報告|報告業務|^邀請|考察|參訪|行政命令|函為(訂定|修正|廢止)/; // 可能要出席的：法案、公聽會、專題報告、業務報告（含「邀請…報告」）、考察（不限本處主管，由人工判斷）
 function build(text, funds = []) {
   const rows = [];
   for (const r of docRows(text).slice(1)) { // 跨頁斷開的會議：單位、召委都空 → 接回上一列
@@ -102,7 +102,7 @@ function build(text, funds = []) {
   let date = '', wd = '';
   // 舊式週報把多案寫在同一段「一、…二、…」→ 拆開並去掉編號
   const split = (l) => l.split(/(?<=^|[。\s】）)])(?=[一二三四五六七八九十]{1,3}、)/)
-    .map((x) => x.replace(/^[一二三四五六七八九十]{1,3}、\s*/, '').trim()).filter(Boolean);
+    .map((x) => x.replace(/^[一二三四五六七八九十]{1,3}、\s*/, '').trim()).filter((x) => x && !/^(繼續|併案)?審查[：:]?$/.test(x)); // 拆完剩下的「繼續審查：」標頭不算一項
   for (const [d, w, , unit, chair, raw, room] of rows) {
     const reason = raw.flatMap(split);
     if (d[0]) { date = d[0]; wd = w[0] || ''; dates.push(date); }
@@ -116,10 +116,10 @@ function build(text, funds = []) {
     for (let l of reason) {
       if (!l.replace(/【[^】]*】|[（(]處理[)）]|\s/g, '')) continue; // 純附註
       // 公務預算、凍結案等其他預算案不列；完全不是預算的（考察、報告、法案…）列成待確認
-      const g = BILL.test(l) ? 'law' : BUDGET.test(l) || isFund(l, funds) ? 'budget' : '';
+      const g = BILL.test(l) ? 'law' : (BUDGET.test(l) && !/歲入|凍結/.test(l.replace(/【[^】]*】?/g, ''))) || isFund(l, funds) ? 'budget' : ''; // 附註【…凍結案…】不算
       if (g) st.kept++; else st.skipped++;
       if (!g) { // 不列的也記下來，給人工檢誤；點到基金／財團法人／營業的特別標出來（多半是基金清單沒收到）
-        const why = /歲入|凍結/.test(l) ? '歲入／凍結案' : /預算/.test(l) ? '公務預算' : '其他議程';
+        const why = /歲入|凍結/.test(l.replace(/【[^】]*】?/g, '')) ? '歲入／凍結案' : /預算/.test(l) ? '公務預算' : '其他議程';
         const text = l.replace(/\s+/g, ' ').trim(), u = unit.join(''), dup = skipped.find((x) => x.unit === u && x.text === text);
         if (dup) { if (!dup.date.includes(date)) dup.date += '、' + date; } // 同案跨日 → 一筆
         else skipped.push({ date, unit: u, chair: chair.join(''), text, why, warn: /基金|財團法人|營業|國營/.test(l) && !/歲入|凍結/.test(l) });
